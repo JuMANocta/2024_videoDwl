@@ -18,6 +18,15 @@ def get_soup(url):
         print(f"Erreur lors de la requête : {e}")
         return None
 
+def suivre_redirection(url):
+    """Suit la redirection de l'URL jusqu'à la destination finale."""
+    try:
+        response = requests.get(url, allow_redirects=True)
+        return response.url  # Retourne l'URL finale après les redirections
+    except requests.RequestException as e:
+        print(f"Erreur lors de la redirection : {e}")
+        return None
+
 def trouver_url_video(url):
     """Trouve l'URL de la vidéo à télécharger."""
     soup = get_soup(url)
@@ -29,14 +38,23 @@ def trouver_url_video(url):
         print("Aucun iframe trouvé.")
         return None
 
-    soup_iframe = get_soup(iframe['src'])
-    if not soup_iframe:
+    # Suivre la redirection de l'iframe
+    iframe_src = suivre_redirection(iframe['src'])
+    if not iframe_src:
+        print("Aucun SRC IFRAME trouvée après redirection.")
         return None
 
-    pattern = re.compile(r'file: "(https?://[^"]+)"')
+    soup_iframe = get_soup(iframe_src)
+    if not soup_iframe:
+        print("Aucun src iframe trouvée.")
+        return None
+
+    # Débogage : afficher tous les scripts trouvés
     for script in soup_iframe.find_all('script'):
-        if script.contents:
-            match = pattern.search(script.contents[0])
+        if script.string:
+            # Rechercher l'URL de la playlist vidéo
+            pattern = re.compile(r'file:\s*["\'](https?://.*?\.m3u8)["\']', re.DOTALL)
+            match = pattern.search(script.string)
             if match:
                 return match.group(1)
 

@@ -46,7 +46,7 @@ Ce script Python permet de rechercher et de télécharger des vidéos depuis le 
    ```
    
 2. **Suivez les instructions** :
-   - Entrez le mot-clé pour rechercher des vidéos.
+   - Entrez un mot-clé du titre pour rechercher des vidéos.
    - Sélectionnez le numéro de la vidéo que vous souhaitez télécharger parmi les résultats listés.
    - Le script télécharge la vidéo choisie.
 
