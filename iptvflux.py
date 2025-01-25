@@ -34,8 +34,14 @@ def lire_url_config(fichier_config="config.ini"):
 
 def telecharger_fichier_m3u(url, nom_fichier="playlist.m3u"):
     """Télécharge le fichier M3U depuis l'URL et le sauvegarde localement."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Referer": url
+    }
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             with open(nom_fichier, "wb") as fichier:
                 fichier.write(response.content)
