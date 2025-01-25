@@ -3,6 +3,8 @@ import requests
 import subprocess
 import configparser
 from urllib.parse import urlencode
+from tqdm import tqdm
+from time import time
 
 # Initialisation de la session globale
 session = requests.Session()
@@ -22,6 +24,16 @@ except (configparser.NoSectionError, configparser.NoOptionError, FileNotFoundErr
     session.close()
     exit(1)
 
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept": "*/*",
+    "Connection": "keep-alive",
+    "Referer": "http://fhd.iptvxvod.com",
+}
+cookies = {
+    # Ajouter des cookies capturés si nécessaire
+    # "sessionid": "votre_cookie_session"
+}
 
 def lire_url_config():
     """Assemble l'URL complète à partir des parties définies dans le fichier de configuration."""
@@ -38,26 +50,26 @@ def lire_url_config():
     return url_complete
 
 def telecharger_fichier_m3u(url, nom_fichier="playlist.m3u", session=None):
-    """Télécharge le fichier M3U depuis l'URL avec une session persistante."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Accept": "*/*",
-        "Connection": "keep-alive",
-        "Referer": base_url
-    }
+    """Télécharge le fichier M3U depuis l'URL avec une session persistante et gère les erreurs."""
     try:
         print("🔄 Téléchargement en cours...")
-        response = session.get(url, headers=headers, timeout=(5, 15))
+        response = session.get(url, headers=headers, cookies=cookies, timeout=(15, 30))
+        
         if response.status_code == 200:
-            with open(nom_fichier, "wb") as fichier:
-                fichier.write(response.content)
-            print(f"✅ Fichier M3U téléchargé et sauvegardé sous : {nom_fichier}")
-            return nom_fichier
+            try:
+                with open(nom_fichier, "wb") as fichier:
+                    fichier.write(response.content)
+                print(f"✅ Fichier M3U téléchargé et sauvegardé sous : {nom_fichier}")
+                return nom_fichier
+            except IOError as e:
+                print(f"❌ Erreur lors de l'écriture du fichier : {e}")
+                return None
         else:
             print(f"❌ Échec du téléchargement. Code HTTP : {response.status_code}")
+            return None
     except requests.RequestException as e:
         print(f"❌ Erreur lors du téléchargement : {e}")
-    return None
+        return None
 
 def lire_fichier_m3u(chemin_fichier):
     """Lit un fichier M3U et extrait les titres et URLs."""
@@ -91,14 +103,37 @@ def rechercher_flux(contenu, mot_cle):
         print(f"❌ Aucun résultat trouvé pour '{mot_cle}'.")
     return resultats
 
-def telecharger_flux(url, nom_fichier="video.mp4"):
-    """Télécharge un flux à partir de son URL en utilisant FFmpeg."""
-    try:
-        commande = ["ffmpeg", "-i", url, "-c", "copy", nom_fichier]
-        subprocess.run(commande, check=True)
-        print(f"✅ Téléchargement terminé : {nom_fichier}")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Erreur lors du téléchargement avec FFmpeg : {e}")
+def telecharger_flux(url, titre=None):
+    """Télécharge un flux à partir de son URL avec gestion des erreurs et options robustes."""
+    nom_fichier = titre or url.split("/")[-1]
+    if not nom_fichier.endswith(".mp4"):
+        nom_fichier += ".mp4"
+
+    for tentative in range(3):  # Jusqu'à 3 tentatives
+        try:
+            print(f"🔄 Tentative {tentative + 1} pour télécharger : {nom_fichier}")
+
+            # Télécharger avec une barre de progression
+            with requests.get(url, headers=headers, stream=True, timeout=(10, 60)) as r, open(nom_fichier, "wb") as fichier, tqdm(
+                desc=nom_fichier,
+                total=int(r.headers.get('content-length', 0)),
+                unit='B',
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as barre:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk:
+                        fichier.write(chunk)
+                        barre.update(len(chunk))
+            print(f"✅ Téléchargement terminé : {nom_fichier}")
+            return nom_fichier
+
+        except requests.RequestException as e:
+            print(f"⚠️ Échec lors de la tentative {tentative + 1} : {e}")
+            time.sleep(5)  # Pause avant la prochaine tentative
+
+    print("❌ Échec après plusieurs tentatives.")
+    return None
 
 if __name__ == "__main__":
     try:
@@ -139,14 +174,15 @@ if __name__ == "__main__":
                         choix_action = input("\nVoulez-vous (1) télécharger un flux ou (2) effectuer une autre recherche ? (1/2) : ").strip()
                         if choix_action == "1":
                             try:
-                                choix_flux = int(input("Entrez le numéro du flux à télécharger : "))
-                                if 1 <= choix_flux <= len(resultats):
-                                    url_flux = resultats[choix_flux - 1]["url"]
-                                    titre_flux = resultats[choix_flux - 1]["titre"]
-                                    nom_sortie = input(f"Entrez le nom de la vidéo de sortie pour '{titre_flux}' (avec extension .mp4) : ").strip()
-                                    telecharger_flux(url_flux, nom_sortie)
-                                else:
-                                    print("❌ Numéro de flux invalide.")
+                                if resultats:
+                                    choix_flux = int(input("Entrez le numéro du flux à télécharger : "))
+                                    if 1 <= choix_flux <= len(resultats):
+                                        url_flux = resultats[choix_flux - 1]["url"]
+                                        titre_flux = resultats[choix_flux - 1]["titre"]
+                                        print(f"🔄 Téléchargement du flux sélectionné : {titre_flux}")
+                                        telecharger_flux(url_flux, titre_flux)
+                                    else:
+                                        print("❌ Numéro de flux invalide.")
                             except ValueError:
                                 print("❌ Veuillez entrer un numéro valide.")
                         elif choix_action == "2":
