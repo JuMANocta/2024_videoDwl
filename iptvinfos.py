@@ -1,5 +1,6 @@
 import requests
 import configparser
+import datetime
 
 def load_config(config_path):
     """
@@ -23,35 +24,48 @@ def load_config(config_path):
     headers = dict(config.items("header"))  # Convertit les en-têtes en dictionnaire
     return iptv_config, headers
 
-def get_account_info(base_url, username, password, headers):
+def get_xtream_data(iptv_config, headers, action):
     """
-    Récupère les informations du compte IPTV à partir de l'API du serveur.
+    Récupère des données depuis un serveur Xtream Codes pour une action donnée.
 
-    :param base_url: URL de base du serveur IPTV (ex: http://example.com:8000)
-    :param username: Nom d'utilisateur de l'abonné
-    :param password: Mot de passe de l'abonné
+    :param iptv_config: Configuration IPTV avec URL et paramètres
     :param headers: En-têtes HTTP à inclure dans la requête
-    :return: Détails du compte ou message d'erreur
+    :param action: Action spécifique (ex: validate, get_account_info)
+    :return: Réponse JSON ou message d'erreur
     """
-    endpoint = f"{base_url}/player_api.php"
+    endpoint = f"{iptv_config['base_url']}"
     params = {
-        "username": username,
-        "password": password,
-        "action": "get_account_info"
+        "username": iptv_config["username"],
+        "password": iptv_config["password"],
+        "action": action
     }
 
     try:
+        print(f"🌐 Envoi de la requête pour l'action : {action}")
         response = requests.get(endpoint, params=params, headers=headers, timeout=10)
         response.raise_for_status()  # Vérifie les erreurs HTTP
-        data = response.json()
+        
+        print("🔍 Réponse brute du serveur :")
+        print(response.text)
 
-        if "user_info" in data:
-            return data["user_info"]
-        else:
-            return {"error": "❌ Impossible de récupérer les informations du compte."}
-
+        return response.json()
     except requests.exceptions.RequestException as e:
         return {"error": f"❌ Erreur de requête : {str(e)}"}
+    except ValueError as e:
+        return {"error": f"❌ Erreur JSON : {str(e)}"}
+
+def format_timestamp(timestamp):
+    """
+    Convertit un timestamp UNIX en une date lisible.
+
+    :param timestamp: Timestamp UNIX
+    :return: Date lisible
+    """
+    try:
+        dt = datetime.datetime.fromtimestamp(int(timestamp))
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return "Inconnu"
 
 # Exemple d'utilisation
 if __name__ == "__main__":
@@ -59,24 +73,27 @@ if __name__ == "__main__":
     config_path = "config.ini"  # Chemin vers le fichier de configuration
     try:
         iptv_config, headers = load_config(config_path)
+        print("⚙️ Configuration chargée avec succès.")
     except Exception as e:
         print(f"⚙️ Erreur de configuration : {e}")
         exit(1)
 
-    print("🌐 Connexion au serveur IPTV...")
-    account_info = get_account_info(
-        iptv_config["base_url"],
-        iptv_config["username"],
-        iptv_config["password"],
-        headers
-    )
+    actions = ["validate", "get_account_info"]
 
-    if "error" in account_info:
-        print(f"❌ {account_info['error']}")
-    else:
-        print("✅ Informations du compte récupérées avec succès :")
-        print(f"  - 🧑 Nom d'utilisateur : {account_info.get('username')}")
-        print(f"  - 🔒 Statut : {account_info.get('status')}")
-        print(f"  - 📶 Connexions actives : {account_info.get('active_cons')}")
-        print(f"  - 📺 Connexions maximales : {account_info.get('max_connections')}")
-        print(f"  - 📆 Date d'expiration : {account_info.get('exp_date')}")
+    for action in actions:
+        print(f"🌐 Test de l'action : {action}")
+        data = get_xtream_data(iptv_config, headers, action)
+
+        if "error" in data:
+            print(f"❌ {data['error']}")
+        else:
+            print(f"✅ Résultat pour l'action '{action}' :")
+            if action == "validate":
+                user_info = data.get('user_info', {})
+                print(f"  - 🔒 Statut : {user_info.get('status', 'Inconnu')}")
+                print(f"  - 📶 Connexions actives : {user_info.get('active_cons', 'Inconnu')}")
+            elif action == "get_account_info":
+                account_info = data.get("user_info", {})
+                print(f"  - 🧑 Nom d'utilisateur : {account_info.get('username', 'Inconnu')}")
+                print(f"  - 📺 Connexions maximales : {account_info.get('max_connections', 'Inconnu')}")
+                print(f"  - 📆 Date d'expiration : {format_timestamp(account_info.get('exp_date'))}")
