@@ -77,7 +77,7 @@ def list_videos_from_search(base_url, url, search_keyword):
 
 def main():
     """Script principal pour rechercher et télécharger une vidéo."""
-    url = 'ozvray' 
+    url = 'rmdios' 
     site = url[5]+url[4]+url[2]+url[3]+url[0]+url[1]
     base_url = f'https://{site}.com'
     print(f"Bienvenue dans le téléchargeur de vidéos {site}.\n")
