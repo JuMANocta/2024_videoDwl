@@ -120,10 +120,8 @@ def main():
                     video_url = trouver_url_video(chosen_video_url)
                     if video_url:
                         print('🔍 URL de la vidéo trouvée, vérification en cours...')
-                        
                         if verifier_url(video_url):
-                            print('✅ URL accessible, début du téléchargement...')
-                            m3u8_To_MP4.multithread_download(video_url)
+                            m3u8_To_MP4.multithread_download(video_url, mp4_file_name=videos[choice]['title'])
                             print("🎞️ Téléchargement terminé avec succès !")
                         else:
                             print('❌ Téléchargement annulé : L’URL de la vidéo est inaccessible.')
