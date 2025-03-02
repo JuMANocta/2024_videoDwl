@@ -75,6 +75,18 @@ def list_videos_from_search(base_url, url, search_keyword):
         print(f"{index}: {title}")
     return videos
 
+def verifier_url(url):
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"Erreur : Statut de la réponse {response.status_code} pour l'URL {url}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"Erreur : Impossible d'accéder à l'URL {url}.\nDétails : {e}")
+        return False
+
 def main():
     """Script principal pour rechercher et télécharger une vidéo."""
     url = 'rmdios' 
@@ -103,7 +115,7 @@ def main():
 
             video_url = trouver_url_video(chosen_video_url)
             if video_url:
-                print('URL de la vidéo trouvée, début du téléchargement...')
+                print('URL de la vidéo trouvée, début du téléchargement...') #ici la vérification 
                 m3u8_To_MP4.multithread_download(video_url, mp4_file_name=videos[choice]['title'])
             else:
                 print("URL de la vidéo non trouvée.")
