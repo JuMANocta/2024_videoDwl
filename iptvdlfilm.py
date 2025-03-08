@@ -1,6 +1,7 @@
 import os
 import requests
 import subprocess
+import time
 import configparser
 from urllib.parse import urlencode
 from tqdm import tqdm
@@ -102,49 +103,43 @@ def rechercher_flux(contenu, mot_cle):
     return resultats
 
 def telecharger_flux(url, titre=None):
-    """Télécharge un flux à partir de son URL avec une barre de progression (si possible)."""
+    """Télécharge un flux à partir de son URL avec gestion des erreurs et options robustes."""
     nom_fichier = titre or url.split("/")[-1]
     if not nom_fichier.endswith(".mp4"):
         nom_fichier += ".mp4"
 
-    try:
-        print(f"🔄 Téléchargement de la vidéo : {nom_fichier}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "Referer": "http://fhd.iptvxvod.com",  # Modifier selon les besoins
+    }
 
-        # Effectuer une requête HEAD pour obtenir la taille du fichier
-        response = requests.head(url, headers=headers, allow_redirects=True)
-        taille_totale = int(response.headers.get('content-length', 0)) if 'content-length' in response.headers else None
+    for tentative in range(3):  # Jusqu'à 3 tentatives
+        try:
+            print(f"🔄 Tentative {tentative + 1} pour télécharger : {nom_fichier}")
 
-        # Afficher un avertissement si la taille totale n'est pas disponible
-        if taille_totale is None:
-            print("⚠️ Taille totale inconnue. Téléchargement sans barre de progression.")
-
-        # Télécharger le fichier
-        with requests.get(url, headers=headers, stream=True) as r, open(nom_fichier, "wb") as fichier:
-            if taille_totale:
-                # Avec barre de progression
-                with tqdm(
-                    desc=nom_fichier,
-                    total=taille_totale,
-                    unit='B',
-                    unit_scale=True,
-                    unit_divisor=1024,
-                ) as barre:
-                    for chunk in r.iter_content(chunk_size=1024):
-                        if chunk:
-                            fichier.write(chunk)
-                            barre.update(len(chunk))
-            else:
-                # Sans barre de progression
+            # Télécharger avec une barre de progression
+            with requests.get(url, headers=headers, stream=True, timeout=(10, 60)) as r, open(nom_fichier, "wb") as fichier, tqdm(
+                desc=nom_fichier,
+                total=int(r.headers.get('content-length', 0)),
+                unit='B',
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as barre:
                 for chunk in r.iter_content(chunk_size=1024):
                     if chunk:
                         fichier.write(chunk)
+                        barre.update(len(chunk))
+            print(f"✅ Téléchargement terminé : {nom_fichier}")
+            return nom_fichier
 
-        print(f"✅ Téléchargement terminé : {nom_fichier}")
-        return nom_fichier
+        except requests.RequestException as e:
+            print(f"⚠️ Échec lors de la tentative {tentative + 1} : {e}")
+            time.sleep(5)  # Pause avant la prochaine tentative
 
-    except requests.RequestException as e:
-        print(f"❌ Erreur lors du téléchargement : {e}")
-        return None
+    print("❌ Échec après plusieurs tentatives.")
+    return None
 
 if __name__ == "__main__":
     try:
