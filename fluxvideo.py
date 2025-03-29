@@ -90,8 +90,8 @@ def verifier_url(url):
 
 def main():
     """Script principal pour rechercher et télécharger une vidéo."""
-    url = 'rmdios' 
-    site = url[5]+url[4]+url[2]+url[3]+url[0]+url[1]
+    url = 'kdaif' 
+    site = url[4]+url[2]+url[3]+url[0]+url[1]
     base_url = f'https://{site}.com'
     print(f"🎬 Bienvenue dans le téléchargeur de vidéos !\n")
 
