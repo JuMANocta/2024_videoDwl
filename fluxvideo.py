@@ -90,7 +90,7 @@ def verifier_url(url):
 
 def main():
     """Script principal pour rechercher et télécharger une vidéo."""
-    url = 'ordsiv' 
+    url = 'doirsv' 
     site = url[4]+url[2]+url[3]+url[0]+url[1]+url[5]
     base_url = f'https://{site}.com'
     print(f"🎬 Bienvenue dans le téléchargeur de vidéos !\n")
