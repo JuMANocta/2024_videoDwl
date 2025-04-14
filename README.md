@@ -2,19 +2,25 @@
 
 ## Description
 
-Ce script Python permet de rechercher et de télécharger des vidéos depuis le site directement sur votre machine locale. Il offre une interface simple en ligne de commande pour rechercher des vidéos par mot-clé, choisir parmi les résultats, et lancer le téléchargement.
+Ce script Python permet de rechercher et de télécharger des vidéos depuis le site cible directement sur votre machine locale. Il offre une interface en ligne de commande simple pour :
+- Rechercher des vidéos par mot-clé.
+- Choisir une vidéo parmi les résultats affichés.
+- Télécharger la vidéo au format `.m3u8`, convertie en `.mp4`.
 
 ## Fonctionnalités
 
-- Recherche de vidéos sur SITE par mot-clé.
-- Liste des vidéos trouvées avec titres.
-- Sélection et téléchargement de vidéos en format `.m3u8` converti en `.mp4`.
+- **Recherche dynamique** : Recherchez des vidéos sur le site cible en entrant simplement un mot-clé.
+- **Affichage des résultats** : Obtenez la liste des vidéos trouvées avec leurs titres.
+- **Téléchargement** : Sélectionnez la vidéo à télécharger, qui sera ensuite convertie en format `.mp4`.
 
 ## Prérequis
 
-- Python 3.6+
-- Bibliothèques Python : `requests`, `beautifulsoup4`, `m3u8_to_mp4`
-- `ffmpeg` installé sur votre système pour le traitement des vidéos.
+- Python 3.6 ou version supérieure.
+- Bibliothèques Python :
+  - `requests`
+  - `beautifulsoup4`
+  - `m3u8_to_mp4`
+- `ffmpeg` doit être installé sur votre système pour la conversion des vidéos.
 
 ## Installation
 
@@ -31,8 +37,9 @@ Ce script Python permet de rechercher et de télécharger des vidéos depuis le 
    ```
 
 3. **Configurer ffmpeg** :
-   Assurez-vous que `ffmpeg` est correctement installé et accessible dans le PATH de votre système. Pour vérifier, exécutez :
+   Vérifiez que ffmpeg est correctement installé et accessible dans le PATH de votre système. Par exemple, sous Windows :
    ```bash
+   winget install ffmpeg
    ffmpeg -version
    ```
    Si `ffmpeg` n'est pas installé, référez-vous à la [documentation officielle de ffmpeg](https://ffmpeg.org/download.html) pour les instructions d'installation.
@@ -49,12 +56,3 @@ Ce script Python permet de rechercher et de télécharger des vidéos depuis le 
    - Entrez un mot-clé du titre pour rechercher des vidéos.
    - Sélectionnez le numéro de la vidéo que vous souhaitez télécharger parmi les résultats listés.
    - Le script télécharge la vidéo choisie.
-
-## Contribution
-
-Les contributions sont les bienvenues ! Si vous souhaitez améliorer le script, veuillez suivre ces étapes :
-1. Forkez le dépôt.
-2. Créez votre branche (`git checkout -b feature/amazing-feature`).
-3. Commitez vos changements (`git commit -m 'Add some amazing feature'`).
-4. Poussez la branche (`git push origin feature/amazing-feature`).
-5. Ouvrez une Pull Request.
