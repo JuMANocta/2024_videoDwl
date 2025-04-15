@@ -9,11 +9,7 @@ URL = 'doorfv'
 
 class CustomLogFilter(logging.Filter):
     def filter(self, record):
-        if "segment set:" in record.getMessage():
-            return True
-        if record.levelno >= logging.ERROR:
-            return True
-        return False
+        return "segment set:" in record.getMessage() or record.levelno >= logging.ERROR
 
 logging.getLogger("m3u8_To_MP4").addFilter(CustomLogFilter())
 
@@ -70,6 +66,35 @@ def trouver_url_video(url):
             if match:
                 return match.group(1)
 
+def verifier_url(url):
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        return response.status_code == 200
+    except requests.RequestException as e:
+        print(f"🚧 Erreur réseau : {e}")
+        return False
+
+def extraire_top_tendances(soup, base_url):
+    tendances = {}
+    top_section = soup.find('div', id='dernierescritiques')
+    if not top_section:
+        return tendances
+    for index, a_tag in enumerate(top_section.find_all('a', href=True), 1):
+        titre_tag = a_tag.find('div', class_='trend_title')
+        info_tag = a_tag.find('div', class_='trend_info')
+        if titre_tag and info_tag:
+            tendances[index] = {
+                'title': titre_tag.text.strip(),
+                'url': base_url + a_tag['href']
+            }
+    return tendances
+
+def afficher_banniere_top():
+    toptxt = "🔥🔥🔥  TOP DES VIDÉOS LES PLUS DEMANDÉES  🔥🔥🔥"
+    print("="*(len(toptxt)+6))
+    print("🔥🔥🔥  TOP DES VIDÉOS LES PLUS DEMANDÉES  🔥🔥🔥")
+    print("="*(len(toptxt)+6))
+
 def list_videos_from_search(base_url, url, search_keyword):
     try:
         response = requests.post(url, data={'searchword': search_keyword})
@@ -82,92 +107,80 @@ def list_videos_from_search(base_url, url, search_keyword):
     for index, video in enumerate(soup.find_all('div', id='hann'), start=1):
         title = re.sub(r'\s+', ' ', video.a.text).strip()
         videos[index] = {'title': title, 'url': base_url + video.a['href']}
-        print(f"🎥 {index}: {title}")
     return videos
 
-def verifier_url(url):
-    try:
-        response = requests.head(url, allow_redirects=True, timeout=5)
-        if response.status_code == 200:
-            return True
-        else:
-            print(f"🚨 Erreur : Statut HTTP {response.status_code} pour l'URL {url}")
-            return False
-    except requests.exceptions.MissingSchema:
-        print(f"⚠️ URL malformée : {url}")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"🚧 Erreur réseau : {e}")
-        return False
+def selectionner_et_telecharger(videos):
+    for index, data in videos.items():
+        print(f"{index}. {data['title']}")
+    print("\n0. 🔁 Nouvelle recherche")
+    print("99. ❌ Quitter")
+
+    while True:
+        try:
+            choix = int(input("\n🎯 Votre choix : "))
+            if choix == 0:
+                return "recherche"
+            if choix == 99:
+                return "quitter"
+            if choix in videos:
+                titre = videos[choix]['title']
+                url = videos[choix]['url']
+                print(f"📌 Sélection : {titre}")
+                video_url = trouver_url_video(url)
+                if video_url and verifier_url(video_url):
+                    filename = re.sub(r'[^\w\-_\. ]', '_', titre) + ".mp4"
+                    print(f"📥 Téléchargement de {filename}")
+                    m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename)
+                    print("✅ Téléchargement terminé !")
+                else:
+                    print("❌ Vidéo introuvable ou inaccessible.")
+                return "ok"
+        except ValueError:
+            print("🚫 Entrez un **nombre valide**.")
 
 def main():
-    """Script principal pour rechercher et télécharger une vidéo."""
     site = URL[4]+URL[2]+URL[3]+URL[0]+URL[1]+URL[5]
     base_url = f'https://{site}.com'
-    print(f"\n🎬 Bienvenue dans le téléchargeur de vidéos !\n")
+    clear_terminal()
+    upload()
+    print(f"\n🎬 Bienvenue sur le téléchargeur vidéo !")
 
-    soup = get_soup(base_url)
+    # Récupérer l'URL de recherche (et de top)
+    soup_accueil = get_soup(base_url)
+    if not soup_accueil:
+        return
+    search_path = soup_accueil.find('a', id=f'{site}c')['href'] if soup_accueil.find('a', id=f'{site}c') else ''
+    search_url = f"{base_url}/{search_path}/home/{site}"
+
+    # Charger la page de recherche qui contient aussi le top
+    soup = get_soup(search_url)
     if not soup:
         return
 
-    search_path = soup.find('a', id=f'{site}c')['href'] if soup.find('a', id=f'{site}c') else ''
-    search_url = f"{base_url}/{search_path}/home/{site}"
+    # Affichage du top
+    tendances = extraire_top_tendances(soup, base_url)
+    if tendances:
+        afficher_banniere_top()
+        result = selectionner_et_telecharger(tendances)
+        if result == "quitter":
+            return
 
-    while True:        
-        search_keyword = input("\n🔎 Entrez votre mot-clé de recherche : ")
+    # Boucle de recherche manuelle
+    while True:
+        search_keyword = input("\n🔎 Entrez un mot-clé de recherche : ")
         videos = list_videos_from_search(base_url, search_url, search_keyword)
         if not videos:
-            print("❌ Aucune vidéo trouvée. Essayez avec un autre mot-clé.")
+            print("❌ Aucun résultat. Essayez un autre mot.")
             continue
-        print("\n⚠ Pour effectuer une nouvelle recherche, entrez 0.")
-        print("🛑 Pour quitter, entrez 99.")
-        selected = None
-        while True:
-            try:
-                choice = int(input("\n🎬 Entrez le numéro de la vidéo que vous souhaitez télécharger ou 0 ou 99 : "))
-                if choice == 0:
-                    clear_terminal()
-                    upload()
-                    print("\n🔄 Nouvelle recherche demandée...")
-                    selected = 0
-                    break
-                elif choice == 99:
-                    print("\n👋 Au revoir et à bientôt !")
-                    return
-                elif choice in videos:
-                    selected = choice
-                    chosen_video_url = videos[choice]['url']
-                    print(f"📌 Vous avez choisi : {videos[choice]['title']}\n🔗 URL : {chosen_video_url}")
-                    video_url = trouver_url_video(chosen_video_url)
-                    if video_url:
-                        print('🔍 URL de la vidéo trouvée, vérification en cours...')
-                        if verifier_url(video_url):
-                            filename = f"{videos[choice]['title'].replace(' ', '_').replace(':', '').replace('/', '')}.mp4"
-                            print(f"📁 Le fichier sera enregistré sous : {filename}")
-                            m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename)
-                            print("🎞️ Téléchargement terminé avec succès !")
-                        else:
-                            print('❌ Téléchargement annulé : L’URL de la vidéo est inaccessible.')
-                    else:
-                        print('❌ Aucune URL de vidéo trouvée.')
-                    break
-                else:
-                    print("⚠️ Choix invalide. Veuillez entrer un numéro valide parmi la liste ou 0 pour une nouvelle recherche.")
-            except ValueError:
-                print("🚫 Entrée invalide. Veuillez entrer un **nombre**.")
-        if selected == 0:
-            continue
-        while True:
-            restart = input("\n🔄 Voulez-vous faire une nouvelle recherche ? (O/N) ").strip().lower()
-            if restart in ["o", "n"]:
-                break
-            print("🚨 Réponse invalide. Tapez 'O' pour Oui ou 'N' pour Non.")
-
-        if restart == "n":
-            print("\n👋 Merci d'avoir utilisé le téléchargeur de vidéos. À bientôt !")
+        result = selectionner_et_telecharger(videos)
+        if result == "quitter":
             break
 
+        restart = input("\n🔄 Nouvelle recherche ? (O/N) : ").strip().lower()
+        if restart != "o":
+            break
+
+    print("\n👋 Merci d’avoir utilisé le téléchargeur !")
+
 if __name__ == '__main__':
-    clear_terminal()
-    upload()
     main()
