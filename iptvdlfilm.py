@@ -18,16 +18,18 @@ try:
     password = config.get("iptv", "password")
     type_ = config.get("iptv", "type")
     output = config.get("iptv", "output")
+    user_agent = config.get("headers", "user-agent")
+    referer = config.get("headers", "referer")
 except (configparser.NoSectionError, configparser.NoOptionError, FileNotFoundError) as e:
     print(f"❌ Erreur lors de la lecture du fichier de configuration : {e}")
     session.close()
     exit(1)
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "User-Agent": user_agent,
     "Accept": "*/*",
     "Connection": "keep-alive",
-    "Referer": "http://fhd.iptvxvod.com",  # Modifier selon les besoins
+    "Referer": referer,  # Modifier selon les besoins
 }
 
 cookies = {
