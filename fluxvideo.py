@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import m3u8_To_MP4
+import m3u8_To_MP4.v2_abstract_task_processor as task_proc
+import m3u8_To_MP4.v2_abstract_crawler_processor as crawler_proc
 import os
 import logging
 
@@ -12,6 +14,19 @@ class CustomLogFilter(logging.Filter):
         return "segment set:" in record.getMessage() or record.levelno >= logging.ERROR
 
 logging.getLogger("m3u8_To_MP4").addFilter(CustomLogFilter())
+
+# Sauvegarde des vraies request GET/HEAD pour le 🐒 Monkey Patch
+_real_get = requests.get
+_real_head = requests.head
+
+CUSTOM_HEADERS_BASE = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "fr-FR,fr;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache"
+}
 
 def upload():
     print(" (                                           (                                         ")
@@ -69,7 +84,9 @@ def trouver_url_video(url):
 def verifier_url(url):
     try:
         response = requests.head(url, allow_redirects=True, timeout=5)
-        return response.status_code == 200
+        print(response)
+        if(response.status_code == 200):
+            return True
     except requests.RequestException as e:
         print(f"🚧 Erreur réseau : {e}")
         return False
@@ -97,7 +114,8 @@ def afficher_banniere_top():
 
 def list_videos_from_search(base_url, url, search_keyword):
     try:
-        response = requests.post(url, data={'searchword': search_keyword})
+        search_api_url = f"{url}/{search_keyword}/0"
+        response = requests.get(search_api_url)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
     except requests.RequestException as e:
@@ -130,13 +148,48 @@ def selectionner_et_telecharger(videos):
                 if video_url and verifier_url(video_url):
                     filename = re.sub(r'[^\w\-_\. ]', '_', titre) + ".mp4"
                     print(f"📥 Téléchargement de {filename}")
-                    m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename)
+                    telecharger_m3u8_secure(video_url, filename)
                     print("✅ Téléchargement terminé !")
                 else:
                     print("❌ Vidéo introuvable ou inaccessible.")
                 return "ok"
         except ValueError:
             print("🚫 Entrez un **nombre valide**.")
+
+def build_headers_from_url(url):
+    """Construit Origin et Referer depuis l'URL via regex"""
+    match = re.match(r'^(https?://[^/]+)', url)
+    headers = CUSTOM_HEADERS_BASE.copy()
+    if match:
+        origin = match.group(1)
+        headers["Origin"] = origin
+        headers["Referer"] = origin + "/"
+    return headers
+
+def custom_get(url, **kwargs):
+    if kwargs.get("headers") is None:
+        kwargs["headers"] = build_headers_from_url(url)
+    else:
+        kwargs["headers"].update(build_headers_from_url(url))
+    return _real_get(url, **kwargs)
+
+def custom_head(url, **kwargs):
+    if kwargs.get("headers") is None:
+        kwargs["headers"] = build_headers_from_url(url)
+    else:
+        kwargs["headers"].update(build_headers_from_url(url))
+    return _real_head(url, **kwargs)
+
+def telecharger_m3u8_secure(video_url, filename):
+    requests.get = custom_get
+    requests.head = custom_head
+    print("🐒 Monkey patch appliqué")
+    try:
+        m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename)
+    finally:
+        requests.get = _real_get
+        requests.head = _real_head
+        print("🐒 Monkey patch suprimé")
 
 def main():
     site = URL[4]+URL[2]+URL[3]+URL[0]+URL[1]+URL[5]
@@ -150,10 +203,11 @@ def main():
     if not soup_accueil:
         return
     search_path = soup_accueil.find('a', id=f'{site}c')['href'] if soup_accueil.find('a', id=f'{site}c') else ''
-    search_url = f"{base_url}/{search_path}/home/{site}"
+    home_url = f"{base_url}/{search_path}/home/{site}"
+    search_url = f"{base_url}/{search_path}/search/{site}"
 
     # Charger la page de recherche qui contient aussi le top
-    soup = get_soup(search_url)
+    soup = get_soup(home_url)
     if not soup:
         return
 
