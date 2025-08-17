@@ -15,19 +15,6 @@ class CustomLogFilter(logging.Filter):
 
 logging.getLogger("m3u8_To_MP4").addFilter(CustomLogFilter())
 
-# Sauvegarde des vraies request GET/HEAD pour le 🐒 Monkey Patch
-_real_get = requests.get
-_real_head = requests.head
-
-CUSTOM_HEADERS_BASE = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-    "Accept": "*/*",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "Accept-Language": "fr-FR,fr;q=0.7",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache"
-}
-
 def upload():
     print(" (                                           (                                         ")
     print(" )\\ ) (                        (             )\\ )                   (            (     ")
@@ -145,7 +132,7 @@ def selectionner_et_telecharger(videos):
                 url = videos[choix]['url']
                 print(f"📌 Sélection : {titre}")
                 video_url = trouver_url_video(url)
-                if video_url and verifier_url(video_url):
+                if video_url:
                     filename = re.sub(r'[^\w\-_\. ]', '_', titre) + ".mp4"
                     print(f"📥 Téléchargement de {filename}")
                     telecharger_m3u8_secure(video_url, filename)
@@ -156,40 +143,39 @@ def selectionner_et_telecharger(videos):
         except ValueError:
             print("🚫 Entrez un **nombre valide**.")
 
-def build_headers_from_url(url):
-    """Construit Origin et Referer depuis l'URL via regex"""
-    match = re.match(r'^(https?://[^/]+)', url)
-    headers = CUSTOM_HEADERS_BASE.copy()
-    if match:
-        origin = match.group(1)
-        headers["Origin"] = origin
-        headers["Referer"] = origin + "/"
-    return headers
+CUSTOM_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+    "Origin": "https://sharecloudy.com",
+    "Referer": "https://sharecloudy.com/",
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "fr-FR,fr;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache"
+}
 
-def custom_get(url, **kwargs):
-    if kwargs.get("headers") is None:
-        kwargs["headers"] = build_headers_from_url(url)
-    else:
-        kwargs["headers"].update(build_headers_from_url(url))
-    return _real_get(url, **kwargs)
+_real_request = requests.Session.request
 
-def custom_head(url, **kwargs):
-    if kwargs.get("headers") is None:
-        kwargs["headers"] = build_headers_from_url(url)
-    else:
-        kwargs["headers"].update(build_headers_from_url(url))
-    return _real_head(url, **kwargs)
+def custom_request(self, method, url, **kwargs):
+    if "sharecloudy.com" in url:
+        if "headers" in kwargs:
+            kwargs["headers"].update(CUSTOM_HEADERS)
+        else:
+            kwargs["headers"] = CUSTOM_HEADERS
+    return _real_request(self, method, url, **kwargs)
 
 def telecharger_m3u8_secure(video_url, filename):
-    requests.get = custom_get
-    requests.head = custom_head
-    print("🐒 Monkey patch appliqué")
+    if "sharecloudy.com" in video_url:
+        # Patch global
+        requests.Session.request = custom_request
+        print("🔒 Headers ShareCloudy activés (global).")
     try:
         m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename)
     finally:
-        requests.get = _real_get
-        requests.head = _real_head
-        print("🐒 Monkey patch suprimé")
+        # Restore
+        requests.Session.request = _real_request
+        if "sharecloudy.com" in video_url:
+            print("♻️ Headers ShareCloudy désactivés.")
 
 def main():
     site = URL[4]+URL[2]+URL[3]+URL[0]+URL[1]+URL[5]
