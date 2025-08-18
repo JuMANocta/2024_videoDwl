@@ -88,7 +88,7 @@ def trouver_url_video(url):
             match = pattern.search(script.string)
             if match:
                 video_url = match.group(1)
-                print(f"🎯 m3u8 trouvé : {video_url}")
+                # print(f"🎯 m3u8 trouvé : {video_url}")
                 return video_url
     print("❌ Aucun m3u8 trouvé dans les scripts.")
     return None
@@ -247,10 +247,6 @@ def main():
             continue
         result = selectionner_et_telecharger(videos)
         if result == "quitter":
-            break
-
-        restart = input("\n🔄 Nouvelle recherche ? (O/N) : ").strip().lower()
-        if restart != "o":
             break
 
     print("\n👋 Merci d’avoir utilisé le téléchargeur !")
