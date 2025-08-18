@@ -1,3 +1,4 @@
+import sys
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -159,8 +160,9 @@ def selectionner_et_telecharger(videos):
                 if video_url:
                     filename = re.sub(r'[^\w\-_\. ]', '_', titre) + ".mp4"
                     print(f"📥 Téléchargement de {filename}")     
-                    telecharger_m3u8_secure(video_url, filename,url)
+                    telecharger_m3u8_secure(video_url, filename)
                     print("✅ Téléchargement terminé !")
+                    sys.exit(0)
                 else:
                     print("❌ Vidéo introuvable ou inaccessible.")
                 return "ok"
@@ -175,7 +177,7 @@ session.headers.update({
     "Chrome/139.0.0.0 Safari/537.36"
 })
 
-def telecharger_m3u8_secure(video_url, filename, referer_page):
+def telecharger_m3u8_secure(video_url, filename):
     # Détection du domaine du m3u8
     domain = urlparse(video_url).netloc
     base_domain = ".".join(domain.split(".")[-2:])  # ex: beerscloud.com
@@ -205,9 +207,8 @@ def telecharger_m3u8_secure(video_url, filename, referer_page):
         filename
     ]
 
-    print(f"📥 Téléchargement de {filename} depuis {domain}")
-    subprocess.run(cmd, check=True)
-    print("✅ Téléchargement terminé !")
+    print(f"⏳ Veuillez patienter... ⌛")
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def main():
     site = URL[4]+URL[2]+URL[3]+URL[0]+URL[1]+URL[5]
