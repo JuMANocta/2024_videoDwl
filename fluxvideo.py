@@ -2,10 +2,11 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import m3u8_To_MP4
-import m3u8_To_MP4.v2_abstract_task_processor as task_proc
-import m3u8_To_MP4.v2_abstract_crawler_processor as crawler_proc
 import os
 import logging
+import requests
+import subprocess
+from urllib.parse import urlparse
 
 URL = 'doorfv'
 
@@ -14,6 +15,14 @@ class CustomLogFilter(logging.Filter):
         return "segment set:" in record.getMessage() or record.levelno >= logging.ERROR
 
 logging.getLogger("m3u8_To_MP4").addFilter(CustomLogFilter())
+
+# Session globale
+session = requests.Session()
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/139.0.0.0 Safari/537.36"
+})
 
 def upload():
     print(" (                                           (                                         ")
@@ -45,28 +54,43 @@ def suivre_redirection(url):
         print(f"🚧 Erreur lors de la redirection : {e}")
         return None
 
+def get_soup_session(url):
+    """Récupère un BeautifulSoup avec cookies persistants."""
+    try:
+        response = session.get(url, timeout=33)
+        response.raise_for_status()
+        return BeautifulSoup(response.text, 'html.parser')
+    except requests.RequestException as e:
+        print(f"⚠️ Erreur lors de la requête : {e}")
+        return None
+
 def trouver_url_video(url):
-    soup = get_soup(url)
+    """Trouve l'URL m3u8 à partir de la page du film avec cookies gérés."""
+    soup = get_soup_session(url)
     if not soup:
         return None
+
     iframe = soup.find('iframe')
     if not iframe or not iframe.get('src'):
         print("🚫 Aucun iframe trouvé.")
         return None
-    iframe_src = suivre_redirection(iframe['src'])
-    if not iframe_src:
-        print("🚫 Aucun SRC IFRAME trouvé après redirection.")
-        return None
-    soup_iframe = get_soup(iframe_src)
+
+    iframe_src = iframe['src']
+    soup_iframe = get_soup_session(iframe_src)
     if not soup_iframe:
         print("🚫 Impossible d'obtenir le contenu de l'iframe.")
         return None
+
     for script in soup_iframe.find_all('script'):
         if script.string:
             pattern = re.compile(r'file:\s*["\'](https?://.*?\.m3u8)["\']', re.DOTALL)
             match = pattern.search(script.string)
             if match:
-                return match.group(1)
+                video_url = match.group(1)
+                print(f"🎯 m3u8 trouvé : {video_url}")
+                return video_url
+    print("❌ Aucun m3u8 trouvé dans les scripts.")
+    return None
 
 def verifier_url(url):
     try:
@@ -134,8 +158,8 @@ def selectionner_et_telecharger(videos):
                 video_url = trouver_url_video(url)
                 if video_url:
                     filename = re.sub(r'[^\w\-_\. ]', '_', titre) + ".mp4"
-                    print(f"📥 Téléchargement de {filename}")
-                    telecharger_m3u8_secure(video_url, filename)
+                    print(f"📥 Téléchargement de {filename}")     
+                    telecharger_m3u8_secure(video_url, filename,url)
                     print("✅ Téléchargement terminé !")
                 else:
                     print("❌ Vidéo introuvable ou inaccessible.")
@@ -143,39 +167,47 @@ def selectionner_et_telecharger(videos):
         except ValueError:
             print("🚫 Entrez un **nombre valide**.")
 
-CUSTOM_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-    "Origin": "https://sharecloudy.com",
-    "Referer": "https://sharecloudy.com/",
-    "Accept": "*/*",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "Accept-Language": "fr-FR,fr;q=0.7",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache"
-}
+# On garde une session avec cookies persistants
+session = requests.Session()
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/139.0.0.0 Safari/537.36"
+})
 
-_real_request = requests.Session.request
+def telecharger_m3u8_secure(video_url, filename, referer_page):
+    # Détection du domaine du m3u8
+    domain = urlparse(video_url).netloc
+    base_domain = ".".join(domain.split(".")[-2:])  # ex: beerscloud.com
 
-def custom_request(self, method, url, **kwargs):
-    if "sharecloudy.com" in url:
-        if "headers" in kwargs:
-            kwargs["headers"].update(CUSTOM_HEADERS)
-        else:
-            kwargs["headers"] = CUSTOM_HEADERS
-    return _real_request(self, method, url, **kwargs)
+    # Construire Origin/Referer dynamiques
+    origin = f"https://{base_domain}"
+    referer = origin + "/"
 
-def telecharger_m3u8_secure(video_url, filename):
-    if "sharecloudy.com" in video_url:
-        # Patch global
-        requests.Session.request = custom_request
-        print("🔒 Headers ShareCloudy activés (global).")
-    try:
-        m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename)
-    finally:
-        # Restore
-        requests.Session.request = _real_request
-        if "sharecloudy.com" in video_url:
-            print("♻️ Headers ShareCloudy désactivés.")
+    # Récupérer cookies actuels de la session
+    cookies = "; ".join([f"{k}={v}" for k, v in session.cookies.items()])
+    if not cookies:
+        cookies = "g=true"  # valeur par défaut si aucun cookie
+
+    headers_str = (
+        f"User-Agent:{session.headers['User-Agent']}\r\n"
+        f"Origin:{origin}\r\n"
+        f"Referer:{referer}\r\n"
+        f"Cookie:{cookies}"
+    )
+
+    cmd = [
+        "ffmpeg",
+        "-headers", headers_str,
+        "-i", video_url,
+        "-c", "copy",
+        "-bsf:a", "aac_adtstoasc",
+        filename
+    ]
+
+    print(f"📥 Téléchargement de {filename} depuis {domain}")
+    subprocess.run(cmd, check=True)
+    print("✅ Téléchargement terminé !")
 
 def main():
     site = URL[4]+URL[2]+URL[3]+URL[0]+URL[1]+URL[5]
