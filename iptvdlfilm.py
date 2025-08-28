@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import time
 import configparser
@@ -13,13 +14,13 @@ try:
     fichier_config="config.ini"
     config.read(fichier_config)
     # Récupérer les paramètres
-    base_url = config.get("iptv", "base_url")
-    username = config.get("iptv", "username")
-    password = config.get("iptv", "password")
-    type_ = config.get("iptv", "type")
-    output = config.get("iptv", "output")
-    user_agent = config.get("headers", "user-agent")
-    referer = config.get("headers", "referer")
+    base_url = config.get("vod", "base_url")
+    username = config.get("vod", "username")
+    password = config.get("vod", "password")
+    type_ = config.get("vod", "type")
+    output = config.get("vod", "output")
+    user_agent = config.get("header", "user-agent")
+    referer = config.get("header", "referer")
 except (configparser.NoSectionError, configparser.NoOptionError, FileNotFoundError) as e:
     print(f"❌ Erreur lors de la lecture du fichier de configuration : {e}")
     session.close()
@@ -29,7 +30,7 @@ headers = {
     "User-Agent": user_agent,
     "Accept": "*/*",
     "Connection": "keep-alive",
-    "Referer": referer,  # Modifier selon les besoins
+    "Referer": referer,
 }
 
 cookies = {
@@ -100,16 +101,19 @@ def rechercher_flux(contenu, mot_cle):
     if resultats:
         print(f"\n✅ {len(resultats)} résultat(s) trouvé(s) pour '{mot_cle}':")
         for i, flux in enumerate(resultats, 1):
-            print(f"🎞️ {i}. {flux['titre']} -> {flux['url']}")
+            print(f"🎞️  {i}. {flux['titre']} -> {flux['url']}")
     else:
         print(f"❌ Aucun résultat trouvé pour '{mot_cle}'.")
     return resultats
 
 def telecharger_flux(url, titre=None):
     """Télécharge un flux à partir de son URL avec gestion des erreurs et options robustes."""
-    nom_fichier = titre or url.split("/")[-1]
-    if not nom_fichier.endswith(".mp4"):
-        nom_fichier += ".mp4"
+    # On part d'abord du titre, sinon du nom dans l'URL
+    nom_base = titre or url.split("/")[-1]
+    ext = detect_extension(nom_base, url)
+    # Supprime l'extension si déjà là
+    nom_base = re.sub(r'(\.mp4|\.mkv)$', '', nom_base, flags=re.IGNORECASE)
+    nom_fichier = sanitize_filename(nom_base) + ext
 
     for tentative in range(3):  # Jusqu'à 3 tentatives
         try:
@@ -136,6 +140,19 @@ def telecharger_flux(url, titre=None):
 
     print("❌ Échec après plusieurs tentatives.")
     return None
+
+def sanitize_filename(filename):
+    """Remplace les caractères interdits pour Windows."""
+    return re.sub(r'[\\/*?:"<>|]', '_', filename)
+
+def detect_extension(nom, url):
+    # Détecte l'extension valide depuis le nom ou l'url, sinon retourne ".mkv"
+    for ext in [".mp4", ".mkv"]:
+        if nom and nom.lower().endswith(ext):
+            return ext
+        if url and url.lower().endswith(ext):
+            return ext
+    return ".mkv"
 
 if __name__ == "__main__":
     try:
@@ -183,7 +200,7 @@ if __name__ == "__main__":
                                             url_flux = resultats[choix_flux]["url"]
                                             titre_flux = resultats[choix_flux]["titre"]
                                             print(f"🔄 Téléchargement du flux : {titre_flux}")
-                                            telecharger_flux(url_flux, f"{titre_flux}.mp4")
+                                            telecharger_flux(url_flux, f"{titre_flux}")
                                         else:
                                             print("❌ Numéro de flux invalide.")
                                     except ValueError:
