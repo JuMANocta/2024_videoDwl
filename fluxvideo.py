@@ -66,21 +66,21 @@ def get_soup_session(url):
         return None
 
 def trouver_url_video(url):
-    """Trouve l'URL m3u8 à partir de la page du film avec cookies gérés."""
+    """Trouve l'URL m3u8 + referer (iframe) à partir de la page du film."""
     soup = get_soup_session(url)
     if not soup:
-        return None
+        return None, None
 
     iframe = soup.find('iframe')
     if not iframe or not iframe.get('src'):
         print("🚫 Aucun iframe trouvé.")
-        return None
+        return None, None
 
     iframe_src = iframe['src']
     soup_iframe = get_soup_session(iframe_src)
     if not soup_iframe:
         print("🚫 Impossible d'obtenir le contenu de l'iframe.")
-        return None
+        return None, None
 
     for script in soup_iframe.find_all('script'):
         if script.string:
@@ -89,9 +89,9 @@ def trouver_url_video(url):
             if match:
                 video_url = match.group(1)
                 # print(f"🎯 m3u8 trouvé : {video_url}")
-                return video_url
+                return video_url, iframe_src
     print("❌ Aucun m3u8 trouvé dans les scripts.")
-    return None
+    return None, None
 
 def verifier_url(url):
     try:
@@ -156,11 +156,20 @@ def selectionner_et_telecharger(videos):
                 titre = videos[choix]['title']
                 url = videos[choix]['url']
                 print(f"📌 Sélection : {titre}")
-                video_url = trouver_url_video(url)
+                video_url, referer_url = trouver_url_video(url)
                 if video_url:
+                    headers = build_headers_for(video_url, referer_url)
+                    try:
+                        session.get(video_url, headers=headers, timeout=10, allow_redirects=True)
+                    except requests.RequestException as e:
+                        print(f"⚠️ Warm-up cookies échoué (non bloquant) : {e}")
+                    host = urlparse(video_url).netloc
+                    ck = cookies_for_domain(session, host)
+                    if ck:
+                        headers["Cookie"] = ck
                     filename = re.sub(r'[^\w\-_\. ]', '_', titre) + ".mp4"
-                    print(f"📥 Téléchargement de {filename}")     
-                    telecharger_m3u8_secure(video_url, filename)
+                    print(f"📥 Téléchargement de {filename}")
+                    m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename, customized_http_header=headers)
                     print("✅ Téléchargement terminé !")
                     sys.exit(0)
                 else:
@@ -169,46 +178,35 @@ def selectionner_et_telecharger(videos):
         except ValueError:
             print("🚫 Entrez un **nombre valide**.")
 
-# On garde une session avec cookies persistants
-session = requests.Session()
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/139.0.0.0 Safari/537.36"
-})
+def build_headers_for(target_url: str, referer_url: str) -> dict:
+    """Construit les headers pour le domaine HLS avec Referer/Origin corrects."""
+    h = dict(session.headers or {})
+    h["Accept"] = h.get("Accept", "*/*")
+    h["Accept-Language"] = h.get("Accept-Language", "fr-FR,fr;q=0.9")
 
-def telecharger_m3u8_secure(video_url, filename):
-    # Détection du domaine du m3u8
-    domain = urlparse(video_url).netloc
-    base_domain = ".".join(domain.split(".")[-2:])  # ex: beerscloud.com
+    # Referer/Origin basés sur la page
+    if referer_url:
+        ref = referer_url
+        parsed_ref = urlparse(ref)
+        origin = f"{parsed_ref.scheme}://{parsed_ref.netloc}"
+        h["Referer"] = ref
+        h["Origin"] = origin
 
-    # Construire Origin/Referer dynamiques
-    origin = f"https://{base_domain}"
-    referer = origin + "/"
+    # IMPORTANT: Cookie ne sera ajouté qu'après un warm-up request
+    h.pop("Cookie", None)
+    return h
 
-    # Récupérer cookies actuels de la session
-    cookies = "; ".join([f"{k}={v}" for k, v in session.cookies.items()])
-    if not cookies:
-        cookies = "g=true"  # valeur par défaut si aucun cookie
-
-    headers_str = (
-        f"User-Agent:{session.headers['User-Agent']}\r\n"
-        f"Origin:{origin}\r\n"
-        f"Referer:{referer}\r\n"
-        f"Cookie:{cookies}"
-    )
-
-    cmd = [
-        "ffmpeg",
-        "-headers", headers_str,
-        "-i", video_url,
-        "-c", "copy",
-        "-bsf:a", "aac_adtstoasc",
-        filename
-    ]
-
-    print(f"⏳ Veuillez patienter... ⌛")
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def cookies_for_domain(session: requests.Session, host: str) -> str:
+    """Retourne 'k=v; k2=v2' des cookies pertinents pour le domaine cible."""
+    jar = session.cookies
+    parts = host.split(".")
+    domain_suffixes = [".".join(parts[i:]) for i in range(len(parts)-2, -1, -1)]
+    kv = []
+    for c in jar:
+        # on inclut cookie si le suffixe du domaine matche le host
+        if any(c.domain.endswith(suf) for suf in domain_suffixes):
+            kv.append(f"{c.name}={c.value}")
+    return "; ".join(kv)
 
 def main():
     site = URL[4]+URL[2]+URL[3]+URL[0]+URL[1]+URL[5]
