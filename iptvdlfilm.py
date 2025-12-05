@@ -5,6 +5,7 @@ import time
 import configparser
 from urllib.parse import urlencode
 from tqdm import tqdm
+from http.client import RemoteDisconnected
 
 # Initialisation de la session globale
 session = requests.Session()
@@ -14,13 +15,14 @@ try:
     fichier_config="config.ini"
     config.read(fichier_config)
     # Récupérer les paramètres
-    base_url = config.get("vod", "base_url")
-    username = config.get("vod", "username")
-    password = config.get("vod", "password")
-    type_ = config.get("vod", "type")
-    output = config.get("vod", "output")
-    user_agent = config.get("header", "user-agent")
-    referer = config.get("header", "referer")
+    base_url = config.get("premium", "base_url")
+    username = config.get("premium", "username")
+    password = config.get("premium", "password")
+    type_ = config.get("premium", "type")
+    output = config.get("premium", "output")
+    # user_agent = config.get("header", "user-agent")
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    referer = config.get("premium", "referer")
 except (configparser.NoSectionError, configparser.NoOptionError, FileNotFoundError) as e:
     print(f"❌ Erreur lors de la lecture du fichier de configuration : {e}")
     session.close()
@@ -54,9 +56,12 @@ def lire_url_config():
 
 def telecharger_fichier_m3u(url, nom_fichier="playlist.m3u", session=None):
     """Télécharge le fichier M3U depuis l'URL avec une session persistante et gère les erreurs."""
+    if session is None:
+        session = requests.Session()
+
     try:
         print("🔄 Téléchargement en cours...")
-        response = session.get(url, headers=headers, cookies=cookies, timeout=(15, 30))
+        response = session.get(url, headers=headers, timeout=(15, 30))
         
         if response.status_code == 200:
             try:
@@ -70,6 +75,16 @@ def telecharger_fichier_m3u(url, nom_fichier="playlist.m3u", session=None):
         else:
             print(f"❌ Échec du téléchargement. Code HTTP : {response.status_code}")
             return None
+    
+    except requests.exceptions.ConnectionError as e:
+        cause = getattr(e, "__cause__", None)
+        if isinstance(cause, RemoteDisconnected):
+            print("❌ Le serveur IPTV a coupé la connexion sans envoyer de réponse.")
+            print("   👉 Souvent : URL/identifiants invalides, abonnement expiré ou protection anti-bot.")
+        else:
+            print(f"❌ Erreur de connexion : {e}")
+        return None
+
     except requests.RequestException as e:
         print(f"❌ Erreur lors du téléchargement : {e}")
         return None
