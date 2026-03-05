@@ -5,8 +5,6 @@ import re
 import m3u8_To_MP4
 import os
 import logging
-import requests
-import subprocess
 from urllib.parse import urlparse
 
 URL = 'riotdv'
@@ -38,9 +36,10 @@ def upload():
 def clear_terminal():
     os.system('cls' if os.name == 'nt' else 'clear')
 
-def get_soup(url):
+def get_soup(url, timeout=33):
+    """Récupère un BeautifulSoup avec cookies persistants."""
     try:
-        response = requests.get(url)
+        response = session.get(url, timeout=timeout)
         response.raise_for_status()
         return BeautifulSoup(response.text, 'html.parser')
     except requests.RequestException as e:
@@ -49,25 +48,15 @@ def get_soup(url):
 
 def suivre_redirection(url):
     try:
-        response = requests.get(url, allow_redirects=True, timeout=5)
+        response = session.get(url, allow_redirects=True, timeout=5)
         return response.url
     except requests.RequestException as e:
         print(f"🚧 Erreur lors de la redirection : {e}")
         return None
 
-def get_soup_session(url):
-    """Récupère un BeautifulSoup avec cookies persistants."""
-    try:
-        response = session.get(url, timeout=33)
-        response.raise_for_status()
-        return BeautifulSoup(response.text, 'html.parser')
-    except requests.RequestException as e:
-        print(f"⚠️ Erreur lors de la requête : {e}")
-        return None
-
 def trouver_url_video(url):
     """Trouve l'URL m3u8 + referer (iframe) à partir de la page du film."""
-    soup = get_soup_session(url)
+    soup = get_soup(url)
     if not soup:
         return None, None
 
@@ -77,7 +66,7 @@ def trouver_url_video(url):
         return None, None
 
     iframe_src = iframe['src']
-    soup_iframe = get_soup_session(iframe_src)
+    soup_iframe = get_soup(iframe_src)
     if not soup_iframe:
         print("🚫 Impossible d'obtenir le contenu de l'iframe.")
         return None, None
@@ -95,13 +84,12 @@ def trouver_url_video(url):
 
 def verifier_url(url):
     try:
-        response = requests.head(url, allow_redirects=True, timeout=5)
-        print(response)
-        if(response.status_code == 200):
+        response = session.head(url, allow_redirects=True, timeout=5)
+        if response.status_code == 200:
             return True
     except requests.RequestException as e:
         print(f"🚧 Erreur réseau : {e}")
-        return False
+    return False
 
 def extraire_top_tendances(soup, base_url):
     tendances = {}
@@ -121,22 +109,23 @@ def extraire_top_tendances(soup, base_url):
 def afficher_banniere_top():
     toptxt = "🔥🔥🔥  TOP DES VIDÉOS LES PLUS DEMANDÉES  🔥🔥🔥"
     print("="*(len(toptxt)+6))
-    print("🔥🔥🔥  TOP DES VIDÉOS LES PLUS DEMANDÉES  🔥🔥🔥")
+    print(toptxt)
     print("="*(len(toptxt)+6))
 
 def list_videos_from_search(base_url, url, search_keyword):
     try:
-        search_api_url = f"{url}/{search_keyword}/0"
-        response = requests.get(search_api_url)
+        response = session.post(url, data={'searchword': search_keyword}, timeout=30)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
     except requests.RequestException as e:
         print(f"🔴 Erreur lors de la recherche : {e}")
         return {}
     videos = {}
-    for index, video in enumerate(soup.find_all('div', id='hann'), start=1):
-        title = re.sub(r'\s+', ' ', video.a.text).strip()
-        videos[index] = {'title': title, 'url': base_url + video.a['href']}
+    items = soup.find_all('div', id='hann')
+    for index, video in enumerate(items, start=1):
+        if video.a:
+            title = re.sub(r'\s+', ' ', video.a.text).strip()
+            videos[index] = {'title': title, 'url': base_url + video.a['href']}
     return videos
 
 def selectionner_et_telecharger(videos):
@@ -171,7 +160,7 @@ def selectionner_et_telecharger(videos):
                     print(f"📥 Téléchargement de {filename}")
                     m3u8_To_MP4.multithread_download(video_url, mp4_file_name=filename, customized_http_header=headers)
                     print("✅ Téléchargement terminé !")
-                    sys.exit(0)
+                    return "ok"
                 else:
                     print("❌ Vidéo introuvable ou inaccessible.")
                 return "ok"
@@ -211,6 +200,9 @@ def cookies_for_domain(session: requests.Session, host: str) -> str:
 def main():
     site = URL[4]+URL[2]+URL[3]+URL[0]+URL[1]+URL[5]
     base_url = f'https://{site}.com'
+    if not verifier_url(base_url):
+        print("❌ Le site est inaccessible. Vérifiez votre connexion ou l'URL.")
+        sys.exit(1)
     clear_terminal()
     upload()
     print(f"\n🎬 Bienvenue sur le téléchargeur vidéo !")
@@ -221,7 +213,6 @@ def main():
         return
     search_path = soup_accueil.find('a', id=f'{site}c')['href'] if soup_accueil.find('a', id=f'{site}c') else ''
     home_url = f"{base_url}/{search_path}/home/{site}"
-    search_url = f"{base_url}/{search_path}/search/{site}"
 
     # Charger la page de recherche qui contient aussi le top
     soup = get_soup(home_url)
@@ -238,8 +229,10 @@ def main():
 
     # Boucle de recherche manuelle
     while True:
-        search_keyword = input("\n🔎 Entrez un mot-clé de recherche : ")
-        videos = list_videos_from_search(base_url, search_url, search_keyword)
+        search_keyword = input("\n🔎 Entrez un mot-clé de recherche (0 pour quitter) : ")
+        if search_keyword.strip() == "0":
+            break
+        videos = list_videos_from_search(base_url, home_url, search_keyword)
         if not videos:
             print("❌ Aucun résultat. Essayez un autre mot.")
             continue
