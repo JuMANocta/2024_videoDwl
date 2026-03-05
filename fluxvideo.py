@@ -9,7 +9,7 @@ import requests
 import subprocess
 from urllib.parse import urlparse
 
-URL = 'doorfv'
+URL = 'riotdv'
 
 class CustomLogFilter(logging.Filter):
     def filter(self, record):
