@@ -15,14 +15,14 @@ try:
     fichier_config="config.ini"
     config.read(fichier_config)
     # Récupérer les paramètres
-    base_url = config.get("premium", "base_url")
-    username = config.get("premium", "username")
-    password = config.get("premium", "password")
-    type_ = config.get("premium", "type")
-    output = config.get("premium", "output")
+    base_url = config.get("platinium", "base_url")
+    username = config.get("platinium", "username")
+    password = config.get("platinium", "password")
+    type_ = config.get("platinium", "type")
+    output = config.get("platinium", "output")
     # user_agent = config.get("header", "user-agent")
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    referer = config.get("premium", "referer")
+    referer = config.get("platinium", "referer")
 except (configparser.NoSectionError, configparser.NoOptionError, FileNotFoundError) as e:
     print(f"❌ Erreur lors de la lecture du fichier de configuration : {e}")
     session.close()
